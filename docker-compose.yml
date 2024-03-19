@@ -1,0 +1,84 @@
+version: "3"
+services:
+  mysql_exporter:
+    image: prom/mysqld-exporter:latest
+    container_name: mysql_exporter
+    ports:
+      - 9105:9104
+    restart: always
+    volumes:
+      - ./mysql_exporter.cnf:/cfg/.my.cnf
+    command``:
+      - "--config.my-cnf=/cfg/.my.cnf"
+      - "--collect.info_schema.processlist"
+      - "--collect.info_schema.innodb_metrics"
+      - "--collect.info_schema.tablestats"
+      - "--collect.info_schema.tables"
+      - "--collect.info_schema.userstats"
+      - "--collect.engine_innodb_status"
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - 9090:9090
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./mysql_exporter_recording_rules.yml:/etc/prometheus/mysql_exporter_recording_rules.yml
+      - /mnt/SSD/database/prom_monitor_data:/prometheus
+    depends_on:
+      - cadvisor
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - 9080:8080
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - 6379:6379
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3333:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.rootfs=/rootfs"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    ports:
+      - "9100:9100"
+
+# necessary for grafana persistent storage https://grafana.com/docs/grafana/latest/setup-grafana/installation/docker/#save-your-grafana-data-1
+volumes:
+  grafana_data: {}
